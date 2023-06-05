@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS public.retry_broker_event;

@@ -1,0 +1,83 @@
+version: '3.7'
+
+networks:
+  kafka:
+    name: kafka
+
+volumes:
+  zookeeper_data:
+  kafka_data:
+    external: true
+
+services:
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    container_name: zookeeper
+    networks:
+      - kafka
+    volumes:
+      - "zookeeper_data:/bitnami"
+    ports:
+      - "2181:2181"
+    environment:
+      - ZOO_ENABLE_AUTH=yes
+      - ZOO_SERVER_USERS=kafka
+      - ZOO_SERVER_PASSWORDS=kafka_password
+    healthcheck:
+      test: nc -z localhost 2181
+
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    volumes:
+      - "kafka_data:/bitnami"
+    networks:
+      - kafka
+    environment:
+      - KAFKA_ENABLE_IDEMPOTENCE=true
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_ZOOKEEPER_USER=kafka
+      - KAFKA_ZOOKEEPER_PASSWORD=kafka_password
+      - KAFKA_CLIENT_USER=admin
+      - KAFKA_CLIENT_PASSWORD=password
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=CLIENT://:9092,EXTERNAL://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=CLIENT://kafka:9092,EXTERNAL://localhost:9093
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=CLIENT
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: kafka-topics.sh --bootstrap-server=localhost:9093 --list
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop:3.29.0
+    container_name: kafdrop
+    restart: "no"
+    networks:
+      - kafka
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./kafkadrop/kafka.conf:/kafdrop/kafka.conf:rw
+    environment:
+      - KAFKA_BROKERCONNECT=kafka:9092
+      - KAFKA_PROPERTIES_FILE="/kafdrop/kafka.conf"
+      - CMD_ARGS="--zookeeper.connect=zookeeper:2181"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
